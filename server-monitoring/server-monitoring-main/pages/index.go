@@ -16,14 +16,13 @@ import (
 )
 
 var (
-	DatabaseConnection *gorm.DB
-	SystemConfig       = MainConfigStruct{}
-	results            [5]server
-	result             server
-
-	chartData [4][100]server
-	data      server
-
+	DatabaseConnection    *gorm.DB
+	SystemConfig          = MainConfigStruct{}
+	results               [5]server
+	result                server
+	report                [4][]ServerReport
+	data                  server
+	chart_address         [4]string
 	first_chart_data      []float64
 	second_chart_data     []float64
 	third_chart_data      []float64
@@ -57,6 +56,14 @@ type server struct {
 	LastLog   string    `json:"lastLog"`
 	Url       string    `json:"url"`
 	LastErr   string    `json:"last_err"`
+}
+type ServerReport struct {
+	Id         int       `json:"id"`        //Id of the server report
+	ServerId   int       `json:"server_id"` //Id of the server related to the server report
+	LastStatus string    `json:"last_status"`
+	LastError  string    `json:"last_error"` //
+	CreatedAt  time.Time `json:"created_at"` //
+	Ping       int       `json:"ping"`
 }
 
 // GetContent return the content of index page.
@@ -155,98 +162,93 @@ func DashboardPage(ctx *context.Context) (types.Panel, error) {
 	/**************************
 	 * Box
 	/**************************/
-	db_row, err2 := DatabaseConnection.Raw("SELECT address , ping ,last_check FROM servers ").Rows()
-	j := 0
+
+	db_row, err2 := DatabaseConnection.Raw("SELECT address,id FROM servers ORDER BY id DESC LIMIT 4 ").Rows()
+	i := 0
 	if err2 == nil {
 		for db_row.Next() {
 			DatabaseConnection.ScanRows(db_row, &data)
-			for j := 0; j < 4; j++ {
-				if chartData[j][len(chartData[j])-1].Address == data.Address || chartData[j][len(chartData[j])-1].Address == "" {
+			DatabaseConnection.Raw("SELECT ping,server_id,last_error,created_at FROM server_reports WHERE server_id = ? ORDER BY id DESC LIMIT 65", data.Id).Scan(&report[i])
 
-					for i := 1; i < len(chartData[j]); i++ {
-						chartData[j][i-1] = chartData[j][i]
-					}
-					chartData[j][len(chartData[j])-1] = data
-					j = 4
-				}
-			}
-
+			chart_address[i] = data.Address
+			i += 1
 		}
-		//fmt.Println()
 	}
+
 	defer row.Close()
 
-	for k := 0; k < len(chartData[0]); k++ {
+	for k := 0; k < len(report[0]); k++ {
+		if report[0] != nil {
 
-		if len(first_chart_data) < len(chartData[0]) {
-			first_chart_data = append(first_chart_data, float64(chartData[0][k].Ping))
-		} else {
+			if len(first_chart_data) < len(report[0]) {
+				first_chart_data = append(first_chart_data, float64(report[0][k].Ping))
+			} else {
 
-			first_chart_data = append(first_chart_data[1:], float64(chartData[0][k].Ping))
+				first_chart_data = append(first_chart_data[1:], float64(report[0][k].Ping))
 
+			}
 		}
+		if report[1] != nil {
 
-		if len(second_chart_data) < len(chartData[0]) {
-			second_chart_data = append(second_chart_data, float64(chartData[1][k].Ping))
-		} else {
+			if len(second_chart_data) < len(report[0]) {
+				second_chart_data = append(second_chart_data, float64(report[1][k].Ping))
+			} else {
 
-			second_chart_data = append(second_chart_data[1:], float64(chartData[1][k].Ping))
+				second_chart_data = append(second_chart_data[1:], float64(report[1][k].Ping))
 
+			}
 		}
+		if report[2] != nil {
 
-		if len(third_chart_data) < len(chartData[0]) {
-			third_chart_data = append(third_chart_data, float64(chartData[2][k].Ping))
-		} else {
+			if len(third_chart_data) < len(report[0]) {
+				third_chart_data = append(third_chart_data, float64(report[2][k].Ping))
+			} else {
 
-			third_chart_data = append(third_chart_data[1:], float64(chartData[2][k].Ping))
+				third_chart_data = append(third_chart_data[1:], float64(report[2][k].Ping))
 
+			}
 		}
+		if report[3] != nil {
+			if len(forth_chart_data) < len(report[0]) {
+				forth_chart_data = append(forth_chart_data, float64(report[3][k].Ping))
+			} else {
 
-		if len(forth_chart_data) < len(chartData[0]) {
-			forth_chart_data = append(forth_chart_data, float64(chartData[3][k].Ping))
-		} else {
+				forth_chart_data = append(forth_chart_data[1:], float64(report[3][k].Ping))
 
-			forth_chart_data = append(forth_chart_data[1:], float64(chartData[3][k].Ping))
-
+			}
 		}
-
-		if len(horizontal_chart_data) < len(chartData[0]) {
-			horizontal_chart_data = append(horizontal_chart_data, fmt.Sprintf("%v:%v:%v", chartData[0][k].LastCheck.Hour(), chartData[0][k].LastCheck.Minute(), chartData[0][k].LastCheck.Second()))
+		if len(horizontal_chart_data) < len(report[0]) {
+			horizontal_chart_data = append(horizontal_chart_data, fmt.Sprintf("%v:%v:%v", report[0][k].CreatedAt.Hour(), report[0][k].CreatedAt.Minute(), report[0][k].CreatedAt.Second()))
 		} else {
 
-			horizontal_chart_data = append(horizontal_chart_data[1:], fmt.Sprintf("%v:%v:%v", chartData[0][k].LastCheck.Hour(), chartData[0][k].LastCheck.Minute(), chartData[0][k].LastCheck.Second()))
+			horizontal_chart_data = append(horizontal_chart_data[1:], fmt.Sprintf("%v:%v:%v", report[0][k].CreatedAt.Hour(), report[0][k].CreatedAt.Minute(), report[0][k].CreatedAt.Second()))
 
 		}
 
 	}
-	first_chart_address := chartData[0][len(chartData[j])-1].Address
-	second_chart_address := chartData[1][len(chartData[j])-1].Address
-	third_chart_address := chartData[2][len(chartData[j])-1].Address
-	forth_chart_address := chartData[3][len(chartData[j])-1].Address
 
 	line := chartjs.Line()
-	//fmt.Println(first_chart_address, second_chart_address, third_chart_address, forth_chart_address)
 	lineChart := line.
 		SetID("PINGCHART").
 		SetHeight(350).
 		SetTitle("PINGS: 5 minutes ago ").
 		SetLabels(horizontal_chart_data).
-		AddDataSet(first_chart_address).
+		AddDataSet(chart_address[0]).
 		DSData(first_chart_data).
 		DSFill(false).
 		DSBorderColor("rgb(210, 214, 222,2)").
 		DSLineTension(0.1).
-		AddDataSet(second_chart_address).
+		AddDataSet(chart_address[1]).
 		DSData(second_chart_data).
 		DSFill(false).
 		DSBorderColor("rgba(60,141,188,2)").
 		DSLineTension(0.1).
-		AddDataSet(third_chart_address).
+		AddDataSet(chart_address[2]).
 		DSData(third_chart_data).
 		DSFill(false).
 		DSBorderColor("rgba(30,71,188,2)").
 		DSLineTension(0.1).
-		AddDataSet(forth_chart_address).
+		AddDataSet(chart_address[3]).
 		DSData(forth_chart_data).
 		DSFill(false).
 		DSBorderColor("rgba(80,101,18,2)").
@@ -272,6 +274,6 @@ func DashboardPage(ctx *context.Context) (types.Panel, error) {
 		Title:           "Dashboard",
 		Description:     "SERVER MONITORING DASHBOARD",
 		AutoRefresh:     true,
-		RefreshInterval: []int{10},
+		RefreshInterval: []int{8},
 	}, nil
 }

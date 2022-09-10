@@ -94,7 +94,7 @@ type ServerReport struct {
 func system_crons() {
 	var Adrs string
 	addrs := make(chan string, 20)
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(4 * time.Second)
 	done := make(chan bool)
 
 	for {
@@ -142,7 +142,7 @@ func start_system() {
 func pinger(addrs <-chan string) {
 
 	for i := range addrs {
-		time.Sleep(2 * time.Second)
+		time.Sleep(4 * time.Second)
 		var piing string
 		pinger, Err := ping.NewPinger(i)
 		var averagePing *time.Duration
@@ -191,9 +191,12 @@ func (this *server) Handle() {
 	this.LastCheck = time.Now()
 	this.LastErr = ""
 	this.Status = "success"
-	this.LastLog = "Connected at : " + time.Now().Format("2006-01-02 15:04:05")
 	DatabaseConnection.Raw("SELECT ping,server_id,last_error FROM server_reports WHERE server_id = ? ORDER BY id DESC LIMIT 1", this.Id).Scan(&result)
 
+	if result.LastError != "" && this.Status == "success" {
+		this.LastLog = "Connected at : " + time.Now().Format("2006-01-02 15:04:05")
+
+	}
 	if ping_err != nil {
 		this.LastErr = ping_err.Error()
 		this.Status = "error"
