@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math/rand"
 
 	"database/sql"
 	"fmt"
@@ -32,8 +33,59 @@ import (
 	"github.com/GoAdminGroup/go-admin/engine"
 	"github.com/GoAdminGroup/go-admin/template"
 	"github.com/GoAdminGroup/go-admin/template/chartjs"
+
+	//	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// var (
+//
+//	// prometheus_gauges = make(map[string]prometheus.Gauge, 0)
+//
+// prometheus_vector = make(map[string]*prometheus.GaugeVec, 0)
+//
+//	gauges_mutex      = sync.Mutex{}
+//	Png               int64
+//	RyanaCount        int64
+//	TeltonikaCount    int64
+//	CobanCount        int64
+//	ConcoxCount       int64
+//	OnlineDeviceCount int64
+//
+// )
+var (
+	// counter = prometheus.NewCounter(
+	// 	prometheus.CounterOpts{
+	// 		Namespace: "golang",
+	// 		Name:      "my_counter",
+	// 		Help:      "This is my counter",
+	// 	})
+	server_info       server
+	prometheus_vector = make(map[string]*prometheus.GaugeVec, 0)
+
+	// gauge = prometheus.NewGauge(
+	// 	prometheus.GaugeOpts{
+	// 		Namespace: "golang",
+	// 		Name:      "my_gauge",
+	// 		Help:      "This is server ping ",
+	// 	})
+
+	// histogram = prometheus.NewHistogram(
+	// 	prometheus.HistogramOpts{
+	// 		Namespace: "golang",
+	// 		Name:      "my_histogram",
+	// 		Help:      "This is my histogram",
+	// 	})
+
+	// summary = prometheus.NewSummary(
+	// 	prometheus.SummaryOpts{
+	// 		Namespace: "golang",
+	// 		Name:      "my_summary",
+	// 		Help:      "This is my summary",
+	// 	})
+)
 var (
 	Row                *sql.Rows
 	DatabaseConnection *gorm.DB
@@ -44,6 +96,7 @@ var (
 	SmtpHost     = "smtp.gmail.com" // smtp server configuration
 	ping_err     error
 	Err2         error
+	Png          int
 )
 
 type DatabaseConfigStruct struct {
@@ -176,9 +229,10 @@ func pinger(addrs <-chan string) {
 		DatabaseConnection.First(&UpdatedInfo, "address = ?", i)
 		intPing, _ := strconv.Atoi(match)
 		UpdatedInfo.Ping = intPing
+		Png = intPing
 
 		UpdatedInfo.Handle()
-
+		server_info = UpdatedInfo
 		DatabaseConnection.Save(&UpdatedInfo)
 
 		pinger.Stop()
@@ -289,9 +343,28 @@ func (this *server) MakeError() {
 
 }
 
+// func newHandlerWithHistogram(handler http.Handler, histogram *prometheus.HistogramVec) http.Handler {
+// 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+// 		start := time.Now()
+// 		status := http.StatusOK
+
+// 		defer func() {
+// 			histogram.WithLabelValues(fmt.Sprintf("%d", status)).Observe(time.Since(start).Seconds())
+// 		}()
+
+// 		if req.Method == http.MethodGet {
+// 			handler.ServeHTTP(w, req)
+// 			return
+// 		}
+// 		status = http.StatusBadRequest
+
+// 		w.WriteHeader(status)
+// 	})
+// }
+
 func main() {
 	//sudo sysctl -w net.ipv4.ping_group_range="0   2147483647"
-
+	// server_info := []server{}
 	pp.Println("start")
 	start_system()
 
@@ -314,8 +387,58 @@ func main() {
 		Addr:    fmt.Sprintf(":%d", SystemConfig.HttpConfig.WebApiPort),
 		Handler: e,
 	}
+	rand.Seed(time.Now().Unix())
+
+	histogramVec := prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "prom_request_time",
+		Help: "Time it has taken to retrieve the metrics",
+	}, []string{"time"})
+
+	prometheus.Register(histogramVec)
+
+	// http.Handle("/metrics", newHandlerWithHistogram(promhttp.Handler(), histogramVec))
+	http.Handle("/metrics", promhttp.Handler())
+
+	// prometheus.MustRegister(counter)
+	// prometheus.MustRegister(histogram)
+	// prometheus.MustRegister(summary)
+	prometheus_vector["endpoints_ping"] = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: "golang",
+			Name:      "my_gauge",
+			Help:      "This is server ping ",
+		},
+		[]string{
+			"name",
+		},
+	)
+	go func() {
+		for {
+			//DatabaseConnection.Select("address", "ping", "last_check").Find(&server_info)
+
+			//for _, endpoint_info := range server_info {
+			// fmt.Println(endpoint_info.Address, endpoint_info.Ping)
+			prometheus_vector["endpoints_ping"].WithLabelValues(server_info.Address).Set(float64(server_info.Ping))
+			// counter.Add(rand.Float64() * 5)
+			//gauge.Add(float64(Png))
+			// gauge.Set(float64(Png))
+			//fmt.Println(float64(Png))
+			// gauge.SetToCurrentTime()
+			// histogram.Observe(rand.Float64() * 10)
+			// summary.Observe(rand.Float64() * 10)s
+
+			time.Sleep(2 * time.Second)
+		}
+	}()
+	prometheus.MustRegister(prometheus_vector["endpoints_ping"])
 
 	go func() {
+		if err := http.ListenAndServe(":9000", nil); err != nil {
+			log.Printf("listen: %s\n", err)
+		}
+	}()
+	go func() {
+
 		if err := srv.ListenAndServe(); err != nil {
 			log.Printf("listen: %s\n", err)
 		}
