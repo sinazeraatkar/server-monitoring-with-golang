@@ -1,0 +1,17 @@
+{
+	"ulid": "01GD9083MPKMY829CN4VWN7YHF",
+	"minTime": 1663516800000,
+	"maxTime": 1663524000000,
+	"stats": {
+		"numSamples": 113774,
+		"numSeries": 1186,
+		"numChunks": 1186
+	},
+	"compaction": {
+		"level": 1,
+		"sources": [
+			"01GD9083MPKMY829CN4VWN7YHF"
+		]
+	},
+	"version": 1
+}

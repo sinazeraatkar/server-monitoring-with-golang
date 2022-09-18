@@ -1,0 +1,74 @@
+version: '3' 
+services:
+  postgres:
+    image: postgres:13.8
+    expose:
+      - 5432
+    container_name: postgres
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+    ports:
+      - 5432:5432
+    restart: unless-stopped
+    volumes:
+      # copy the sql script to create tables
+      - ./sql/create.sql:/docker-entrypoint-initdb.d/create.sql 
+      # copy the sql script to fill table
+      - ./sql/fill.sql:/docker-entrypoint-initdb.d/fill.sql
+    environment:
+      POSTGRES_PASSWORD: "1234"
+      POSTGRES_USER: "postgres"
+      POSTGRES_DB: server_monitor
+  app:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "9033:9033"
+    depends_on:
+      - postgres
+
+  prometheus:
+    image: prom/prometheus:v2.36.2
+    user: root 
+    volumes:
+      - "./etc/prometheus/:/etc/prometheus/"
+      - "./var/prometheus/prometheus_data:/prometheus"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    restart: always
+
+  node-exporter:
+    image: prom/node-exporter
+    ports:
+      - "9100:9100"
+
+  grafana:
+    image: grafana/grafana
+    user: root 
+
+    container_name: grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    volumes:
+      - "./var/grafana/grafana_data:/var/lib/grafana"
+      - "./etc/grafana/provisioning/:/etc/grafana/provisioning/"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=1234
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: always
+
+volumes:
+  grafana-storage:
+  prometheus_data:
